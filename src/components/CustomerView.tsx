@@ -3,12 +3,14 @@ import { useApp } from '../context/AppContext';
 import { CartItem, MenuItem, Order } from '../types';
 import { HOTEL_INFO } from '../mockData';
 import { MockPayment } from './MockPayment';
+import { AiDiningAssistant } from './ai/AiDiningAssistant';
 import { 
   Search, Plus, Minus, ShoppingBag, Info, Clock, 
   Phone, MapPin, Coffee, Utensils, X, ChevronRight, 
   CreditCard, Sparkles, AlertCircle, CheckCircle 
 } from 'lucide-react';
 import QRCode from 'qrcode';
+
 
 export const CustomerView: React.FC = () => {
   const { menu, sections, orders, placeOrder, requestBill, settleBill, isCloudSync } = useApp();
@@ -162,7 +164,9 @@ export const CustomerView: React.FC = () => {
     return matchesSearch && matchesCategory && matchesVeg;
   });
 
-  const categories = ['All', 'Appetizers', 'Mains', 'Desserts', 'Beverages'];
+  const categories = ['All', 'Starters', 'Rice & Biryanis', 'Tandoori & Grills', 'Chef Specials', 'Main Course', 'Desserts', 'Beverages'];
+
+
 
   if (!tableId || !sectionName) {
     return (
@@ -404,7 +408,15 @@ export const CustomerView: React.FC = () => {
               return (
                 <div key={item.id} style={styles.menuCard} className="animate-scale-in">
                   <div style={styles.cardImageWrapper}>
-                    <img src={item.image} alt={item.name} style={styles.cardImage} />
+                    <img 
+                      src={item.image} 
+                      alt={item.name} 
+                      style={styles.cardImage} 
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80";
+                      }}
+                    />
+
                     <span style={item.isVeg ? styles.vegBadge : styles.nonVegBadge}>
                       {item.isVeg ? 'Veg' : 'Non-Veg'}
                     </span>
@@ -557,9 +569,13 @@ export const CustomerView: React.FC = () => {
           }}
         />
       )}
+
+      {/* Floating Gemini AI Assistant */}
+      <AiDiningAssistant cart={cart} onAddToCart={addToCart} />
     </div>
   );
 };
+
 
 const statusStyles: Record<string, React.CSSProperties> = {
   received: { backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' },

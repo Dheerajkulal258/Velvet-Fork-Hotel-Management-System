@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { ChefHat, Clock, Flame, Check, CheckCircle2, Volume2, VolumeX } from 'lucide-react';
+import { ChefHat, Clock, Flame, Check, CheckCircle2, Volume2, VolumeX, Sparkles } from 'lucide-react';
+import { AiKitchenInsights } from './ai/AiKitchenInsights';
 
 export const KitchenView: React.FC = () => {
-  const { orders, updateOrderStatus, isCloudSync } = useApp();
+  const { orders, menu, updateOrderStatus, isCloudSync } = useApp();
   const [soundEnabled, setSoundEnabled] = useState(true);
   const prevOrdersCount = useRef(orders.length);
+
 
   const kitchenOrders = orders.filter(
     order => order.status === 'received' || order.status === 'preparing' || order.status === 'ready'
@@ -105,8 +107,12 @@ export const KitchenView: React.FC = () => {
         </div>
       </header>
 
+      {/* AI Kitchen Intelligence Advisor */}
+      <AiKitchenInsights orders={orders} menu={menu} />
+
       {/* Main Board Grid */}
       <main style={styles.boardGrid}>
+
         
         {/* Column 1: Received / New Queue */}
         <section style={styles.column}>
@@ -121,10 +127,15 @@ export const KitchenView: React.FC = () => {
                   <div style={styles.cardHeader}>
                     <div>
                       <h3 style={styles.cardTable}>{order.sectionName} - {order.tableId.split('-').pop()}</h3>
-                      <p style={styles.cardTime}>
-                        <Clock size={12} style={{ marginRight: '4px' }} />
-                        {getElapsedTime(order.timestamp)}
-                      </p>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                        <span style={styles.cardTime}>
+                          <Clock size={12} style={{ marginRight: '4px' }} />
+                          {getElapsedTime(order.timestamp)}
+                        </span>
+                        <span style={styles.aiPrepBadge}>
+                          <Sparkles size={11} color="#ea580c" /> AI Est: ~{order.estimatedPrepTimeMinutes || 15}m
+                        </span>
+                      </div>
                     </div>
                     <span style={styles.statusLabelNew}>NEW</span>
                   </div>
@@ -172,13 +183,19 @@ export const KitchenView: React.FC = () => {
                   <div style={styles.cardHeader}>
                     <div>
                       <h3 style={styles.cardTable}>{order.sectionName} - {order.tableId.split('-').pop()}</h3>
-                      <p style={styles.cardTime}>
-                        <Clock size={12} style={{ marginRight: '4px' }} />
-                        {getElapsedTime(order.timestamp)}
-                      </p>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                        <span style={styles.cardTime}>
+                          <Clock size={12} style={{ marginRight: '4px' }} />
+                          {getElapsedTime(order.timestamp)}
+                        </span>
+                        <span style={styles.aiPrepBadge}>
+                          <Sparkles size={11} color="#ea580c" /> AI Est: ~{order.estimatedPrepTimeMinutes || 15}m
+                        </span>
+                      </div>
                     </div>
                     <span style={styles.statusLabelPrep}>PREPARING</span>
                   </div>
+
 
                   <div style={styles.cardItems}>
                     {order.items.map((item, idx) => (
@@ -525,8 +542,21 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '13px',
     color: '#71717a',
     marginTop: '12px',
+  },
+  aiPrepBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
+    backgroundColor: 'rgba(234, 88, 12, 0.12)',
+    border: '1px solid rgba(234, 88, 12, 0.3)',
+    borderRadius: '4px',
+    padding: '2px 6px',
+    fontSize: '10px',
+    fontWeight: 600,
+    color: '#f97316',
   }
 };
+
 
 if (typeof document !== 'undefined') {
   const styleSheet = document.createElement('style');

@@ -2,20 +2,23 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { MenuItem, Order, Table } from '../types';
 import { HOTEL_INFO } from '../mockData';
+import { AiAdminAnalytics } from './ai/AiAdminAnalytics';
 import { 
   BarChart3, QrCode, ClipboardList, Plus, Edit2, Trash2, 
   DollarSign, Percent, Receipt, Check, RefreshCw, Layers, 
-  ExternalLink, Download, AlertCircle, ShoppingBag 
+  ExternalLink, Download, AlertCircle, ShoppingBag, Sparkles 
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
 export const AdminView: React.FC = () => {
   const { 
     menu, sections, orders, updateOrderStatus, settleBill, 
-    addMenuItem, updateMenuItem, deleteMenuItem, isCloudSync 
+    addMenuItem, updateMenuItem, deleteMenuItem, resetMenuToDefault, isCloudSync 
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'tables' | 'qr' | 'menu' | 'analytics'>('tables');
+
+  const [activeTab, setActiveTab] = useState<'tables' | 'qr' | 'menu' | 'analytics' | 'ai_insights'>('ai_insights');
+
   
   const [selectedTable, setSelectedTable] = useState<{ sectionName: string; table: Table } | null>(null);
   const [discountPercent, setDiscountPercent] = useState<number>(0);
@@ -30,7 +33,8 @@ export const AdminView: React.FC = () => {
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [itemName, setItemName] = useState('');
   const [itemPrice, setItemPrice] = useState('');
-  const [itemCategory, setItemCategory] = useState<MenuItem['category']>('Mains');
+  const [itemCategory, setItemCategory] = useState<MenuItem['category']>('Main Course');
+
   const [itemIsVeg, setItemIsVeg] = useState(true);
   const [itemDesc, setItemDesc] = useState('');
   const [itemImage, setItemImage] = useState('');
@@ -193,6 +197,19 @@ export const AdminView: React.FC = () => {
             <Layers size={16} /> Menu Manager
           </button>
           <button 
+            onClick={() => setActiveTab('ai_insights')} 
+            style={{ 
+              ...styles.navLink, 
+              ...(activeTab === 'ai_insights' ? {
+                ...styles.activeNavLink,
+                backgroundImage: 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)'
+              } : {}) 
+            }}
+          >
+            <Sparkles size={16} color={activeTab === 'ai_insights' ? '#ffffff' : '#f97316'} /> AI Business Intelligence
+          </button>
+
+          <button 
             onClick={() => setActiveTab('analytics')} 
             style={{ ...styles.navLink, ...(activeTab === 'analytics' ? styles.activeNavLink : {}) }}
           >
@@ -203,9 +220,15 @@ export const AdminView: React.FC = () => {
 
       {/* Main View Area */}
       <div style={styles.contentArea}>
+
+        {/* AI BUSINESS INTELLIGENCE TAB */}
+        {activeTab === 'ai_insights' && (
+          <AiAdminAnalytics />
+        )}
         
         {/* TABLE LAYOUT TAB */}
         {activeTab === 'tables' && (
+
           <div style={styles.tabContentRow}>
             {/* Sections and Tables */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '28px' }}>
@@ -489,17 +512,26 @@ export const AdminView: React.FC = () => {
             <div style={styles.menuHeaderRow}>
               <h2 style={styles.tabSectionTitle}>Menu Management</h2>
               {!isAddingItem && (
-                <button 
-                  onClick={() => {
-                    setEditingItem(null);
-                    setIsAddingItem(true);
-                  }} 
-                  style={styles.addMenuBtn}
-                  className="shine-btn"
-                >
-                  <Plus size={16} /> Add Menu Item
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button 
+                    onClick={resetMenuToDefault}
+                    style={{ ...styles.addMenuBtn, backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#d4d4d8' }}
+                  >
+                    <RefreshCw size={14} /> Re-sync 34 Default Items
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setEditingItem(null);
+                      setIsAddingItem(true);
+                    }} 
+                    style={styles.addMenuBtn}
+                    className="shine-btn"
+                  >
+                    <Plus size={16} /> Add Menu Item
+                  </button>
+                </div>
               )}
+
             </div>
 
             {isAddingItem ? (
@@ -541,11 +573,16 @@ export const AdminView: React.FC = () => {
                       onChange={(e) => setItemCategory(e.target.value as MenuItem['category'])}
                       style={styles.select}
                     >
-                      <option value="Appetizers">Appetizers</option>
-                      <option value="Mains">Mains</option>
+                      <option value="Starters">Starters</option>
+                      <option value="Rice & Biryanis">Rice & Biryanis</option>
+                      <option value="Tandoori & Grills">Tandoori & Grills</option>
+                      <option value="Chef Specials">Chef Specials</option>
+                      <option value="Main Course">Main Course</option>
                       <option value="Desserts">Desserts</option>
                       <option value="Beverages">Beverages</option>
+
                     </select>
+
                   </div>
                   <div style={{ ...styles.formGroup, flex: 1 }}>
                     <label style={styles.label}>Dietary Marker</label>

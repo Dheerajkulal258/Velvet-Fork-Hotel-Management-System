@@ -3,16 +3,28 @@ export interface MenuItem {
   name: string;
   price: number;
   description: string;
-  category: 'Appetizers' | 'Mains' | 'Desserts' | 'Beverages';
+  category: 'Starters' | 'Chef Specials' | 'Main Course' | 'Rice & Biryanis' | 'Tandoori & Grills' | 'Desserts' | 'Beverages';
+
   isVeg: boolean;
   isAvailable: boolean;
   image: string;
 }
 
+
 export interface CartItem {
   menuItem: MenuItem;
   quantity: number;
   notes?: string;
+}
+
+export interface CustomerReview {
+  id: string;
+  orderId: string;
+  rating: number; // 1 to 5 stars
+  comment: string;
+  timestamp: string;
+  tableId: string;
+  sentiment?: 'positive' | 'neutral' | 'negative';
 }
 
 export interface Order {
@@ -26,6 +38,8 @@ export interface Order {
   paymentStatus: 'pending' | 'completed';
   paymentMethod?: 'UPI' | 'Card' | 'Cash';
   billingRequested: boolean;
+  estimatedPrepTimeMinutes?: number;
+  feedback?: CustomerReview;
 }
 
 export interface Table {
@@ -44,4 +58,12 @@ export interface SystemState {
   orders: Order[];
   menu: MenuItem[];
   sections: Section[];
+  reviews: CustomerReview[];
 }
+
+export interface AiRecommendation {
+  menuItem: MenuItem;
+  reason: string;
+  pairingSuggestion?: string;
+}
+

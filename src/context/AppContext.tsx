@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { MenuItem, Order, Section, Table, CartItem } from '../types';
-import { INITIAL_MENU, INITIAL_SECTIONS } from '../mockData';
+import { MenuItem, Order, Section, Table, CartItem, CustomerReview } from '../types';
+import { INITIAL_MENU, INITIAL_SECTIONS, INITIAL_REVIEWS } from '../mockData';
+import { calculateAiPrepTime } from '../services/geminiService';
 import { db, isFirebaseConfigured } from '../firebase';
 import { 
   collection, doc, setDoc, addDoc, updateDoc, deleteDoc, 
@@ -8,9 +9,11 @@ import {
 } from 'firebase/firestore';
 
 interface AppContextType {
+
   menu: MenuItem[];
   sections: Section[];
   orders: Order[];
+  reviews: CustomerReview[];
   isCloudSync: boolean;
   placeOrder: (tableId: string, sectionName: string, items: CartItem[]) => Order;
   updateOrderStatus: (orderId: string, status: Order['status']) => void;
@@ -19,6 +22,8 @@ interface AppContextType {
   addMenuItem: (item: Omit<MenuItem, 'id'>) => void;
   updateMenuItem: (item: MenuItem) => void;
   deleteMenuItem: (id: string) => void;
+  addCustomerReview: (review: Omit<CustomerReview, 'id' | 'timestamp'>) => void;
+  resetMenuToDefault: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -39,6 +44,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [reviews, setReviews] = useState<CustomerReview[]>(INITIAL_REVIEWS);
+
+  // Helper to re-seed Firestore with complete INITIAL_MENU
+  const seedFirestoreMenu = async () => {
+    if (!db) return;
+    try {
+      console.log("Seeding/Updating complete 34-item menu collection in Firestore...");
+      const batch = writeBatch(db);
+      INITIAL_MENU.forEach((item) => {
+        const itemRef = doc(db, 'menu', item.id);
+        batch.set(itemRef, item);
+      });
+      await batch.commit();
+    } catch (e) {
+      console.error("Error seeding Firestore menu:", e);
+    }
+  };
 
   // -----------------------------------------------------------------
   // 1. FIREBASE ACTIVE MODE
@@ -50,25 +72,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Listener for Menu
     const unsubscribeMenu = onSnapshot(collection(db, 'menu'), async (snapshot) => {
-      if (snapshot.empty) {
-        // DB is empty, seed initial menu items
-        console.log("Seeding menu collection in Firestore...");
-        try {
-          const batch = writeBatch(db);
-          INITIAL_MENU.forEach((item) => {
-            const itemRef = doc(db, 'menu', item.id);
-            batch.set(itemRef, item);
-          });
-          await batch.commit();
-        } catch (e) {
-          console.error("Error seeding menu:", e);
-        }
+      if (snapshot.empty || snapshot.docs.length < INITIAL_MENU.length) {
+        // DB is empty or has old small menu, seed full 34-item initial menu items
+        await seedFirestoreMenu();
       } else {
         const menuItems: MenuItem[] = [];
-        snapshot.forEach((doc) => menuItems.push(doc.data() as MenuItem));
+        snapshot.forEach((doc) => {
+          const data = doc.data() as MenuItem;
+          // Auto migrate old category names
+          if ((data.category as string) === 'Appetizers') data.category = 'Starters';
+          if ((data.category as string) === 'Mains') data.category = 'Main Course';
+          menuItems.push(data);
+        });
         setMenu(menuItems);
       }
     });
+
 
     // Listener for Tables & Sections
     const unsubscribeTables = onSnapshot(collection(db, 'tables'), async (snapshot) => {
@@ -146,15 +165,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     console.log("App running in LOCAL FALLBACK mode (localStorage)");
 
-    // Initialize state from local storage or defaults
-    const savedMenu = localStorage.getItem(`${LOCAL_STORAGE_KEY}_menu`);
-    setMenu(savedMenu ? JSON.parse(savedMenu) : INITIAL_MENU);
+    // Initialize state from local storage or defaults with auto-migration
+    const savedMenuStr = localStorage.getItem(`${LOCAL_STORAGE_KEY}_menu`);
+    let activeMenu = INITIAL_MENU;
+
+    if (savedMenuStr) {
+      try {
+        const parsed = JSON.parse(savedMenuStr);
+        // If saved menu is an older version with fewer items or outdated schema, update to fresh INITIAL_MENU
+        if (parsed.length < INITIAL_MENU.length) {
+          activeMenu = INITIAL_MENU;
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_menu`, JSON.stringify(INITIAL_MENU));
+        } else {
+          // Migrate category names
+          activeMenu = parsed.map((item: any) => ({
+            ...item,
+            category: item.category === 'Appetizers' ? 'Starters' : item.category === 'Mains' ? 'Main Course' : item.category
+          }));
+        }
+      } catch (e) {
+        activeMenu = INITIAL_MENU;
+        localStorage.setItem(`${LOCAL_STORAGE_KEY}_menu`, JSON.stringify(INITIAL_MENU));
+      }
+    } else {
+      localStorage.setItem(`${LOCAL_STORAGE_KEY}_menu`, JSON.stringify(INITIAL_MENU));
+    }
+    setMenu(activeMenu);
+
 
     const savedSections = localStorage.getItem(`${LOCAL_STORAGE_KEY}_sections`);
     setSections(savedSections ? JSON.parse(savedSections) : INITIAL_SECTIONS);
 
+
     const savedOrders = localStorage.getItem(`${LOCAL_STORAGE_KEY}_orders`);
     setOrders(savedOrders ? JSON.parse(savedOrders) : []);
+
+    const savedReviews = localStorage.getItem(`${LOCAL_STORAGE_KEY}_reviews`);
+    setReviews(savedReviews ? JSON.parse(savedReviews) : INITIAL_REVIEWS);
 
     const channel = new BroadcastChannel(CHANNEL_NAME);
 
@@ -164,6 +211,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (payload.menu) setMenu(payload.menu);
         if (payload.sections) setSections(payload.sections);
         if (payload.orders) setOrders(payload.orders);
+        if (payload.reviews) setReviews(payload.reviews);
       }
     };
 
@@ -174,6 +222,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (e.key === `${LOCAL_STORAGE_KEY}_menu` && e.newValue) setMenu(JSON.parse(e.newValue));
       if (e.key === `${LOCAL_STORAGE_KEY}_sections` && e.newValue) setSections(JSON.parse(e.newValue));
       if (e.key === `${LOCAL_STORAGE_KEY}_orders` && e.newValue) setOrders(JSON.parse(e.newValue));
+      if (e.key === `${LOCAL_STORAGE_KEY}_reviews` && e.newValue) setReviews(JSON.parse(e.newValue));
     };
     window.addEventListener('storage', handleStorageChange);
 
@@ -185,15 +234,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // Helper to save state locally & broadcast
-  const saveAndBroadcastLocal = (updatedMenu: MenuItem[], updatedSections: Section[], updatedOrders: Order[]) => {
+  const saveAndBroadcastLocal = (
+    updatedMenu: MenuItem[], 
+    updatedSections: Section[], 
+    updatedOrders: Order[], 
+    updatedReviews: CustomerReview[] = reviews
+  ) => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_menu`, JSON.stringify(updatedMenu));
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_sections`, JSON.stringify(updatedSections));
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_orders`, JSON.stringify(updatedOrders));
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_reviews`, JSON.stringify(updatedReviews));
 
     const channel = new BroadcastChannel(CHANNEL_NAME);
     channel.postMessage({
       type: 'STATE_UPDATE',
-      payload: { menu: updatedMenu, sections: updatedSections, orders: updatedOrders }
+      payload: { menu: updatedMenu, sections: updatedSections, orders: updatedOrders, reviews: updatedReviews }
     });
     channel.close();
   };
@@ -202,8 +257,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 3. API METHODS (Handles Firebase writes OR Local Fallbacks)
   // -----------------------------------------------------------------
   
-  // Place Order
+  // Place Order with AI Prep Time
   const placeOrder = (tableId: string, sectionName: string, items: CartItem[]): Order => {
+    const activeKitchenOrdersCount = orders.filter(o => o.status === 'received' || o.status === 'preparing').length;
+    const aiPrepTime = calculateAiPrepTime(items, activeKitchenOrdersCount);
+
     const newOrder: Order = {
       id: `ord-${Math.random().toString(36).substr(2, 9)}`,
       tableId,
@@ -213,7 +271,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timestamp: new Date().toISOString(),
       totalAmount: items.reduce((sum, item) => sum + (item.menuItem.price * item.quantity), 0),
       paymentStatus: 'pending',
-      billingRequested: false
+      billingRequested: false,
+      estimatedPrepTimeMinutes: aiPrepTime
     };
 
     if (isFirebaseConfigured && db) {
@@ -439,11 +498,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const addCustomerReview = (review: Omit<CustomerReview, 'id' | 'timestamp'>) => {
+    const newId = `rev-${Math.random().toString(36).substr(2, 9)}`;
+    const newReview: CustomerReview = {
+      ...review,
+      id: newId,
+      timestamp: new Date().toISOString(),
+      sentiment: review.rating >= 4 ? 'positive' : review.rating === 3 ? 'neutral' : 'negative'
+    };
+
+    const newReviews = [newReview, ...reviews];
+    setReviews(newReviews);
+
+    if (isFirebaseConfigured && db) {
+      try {
+        setDoc(doc(db, 'reviews', newId), newReview);
+      } catch (e) {
+        console.error("Firestore addCustomerReview failed:", e);
+      }
+    } else {
+      saveAndBroadcastLocal(menu, sections, orders, newReviews);
+    }
+  };
+
+  const resetMenuToDefault = async () => {
+    setMenu(INITIAL_MENU);
+    if (isFirebaseConfigured && db) {
+      await seedFirestoreMenu();
+    } else {
+      saveAndBroadcastLocal(INITIAL_MENU, sections, orders, reviews);
+    }
+  };
+
   return (
     <AppContext.Provider value={{
       menu,
       sections,
       orders,
+      reviews,
       isCloudSync: isFirebaseConfigured,
       placeOrder,
       updateOrderStatus,
@@ -451,12 +543,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       settleBill,
       addMenuItem,
       updateMenuItem,
-      deleteMenuItem
+      deleteMenuItem,
+      addCustomerReview,
+      resetMenuToDefault
     }}>
       {children}
     </AppContext.Provider>
   );
 };
+
+
 
 export const useApp = () => {
   const context = useContext(AppContext);
